@@ -8,8 +8,9 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import java.util.regex.Pattern;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class AbstractSensitiveDataObfuscatorLayoutTest {
 
@@ -74,6 +75,30 @@ class AbstractSensitiveDataObfuscatorLayoutTest {
         //expect:
         var ex = assertThrows(IncorrectConfigurationException.class, () -> subject.addPatternName(str));
         Assertions.assertEquals("Unknown name. You can use the following predefined pattern names [JSON,EQUAL_AND_SQUARE_BRACKETS,EQUAL_AND_BRACKETS,EQUAL_AND_DOUBLE_QUOTES]", ex.getMessage());
+    }
+
+    @Test
+    void shouldHaveDefaultRegexTimeout() {
+        assertEquals(500, subject.regexTimeoutMillis);
+    }
+
+    @Test
+    void shouldAllowSettingCustomRegexTimeout() {
+        subject.setRegexTimeoutMillis(1000);
+        assertEquals(1000, subject.regexTimeoutMillis);
+    }
+
+    @Test
+    void shouldAllowDisablingTimeoutWithMinusOne() {
+        subject.setRegexTimeoutMillis(-1);
+        assertEquals(-1, subject.regexTimeoutMillis);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -2, -100})
+    void shouldThrowExceptionWhenRegexTimeoutIsInvalid(int timeout) {
+        var ex = assertThrows(IncorrectConfigurationException.class, () -> subject.setRegexTimeoutMillis(timeout));
+        assertEquals("regexTimeoutMillis must be a positive integer or -1 to disable timeout", ex.getMessage());
     }
 
     static class TestImplementationSensitiveDataTextDecoratorTest extends AbstractSensitiveDataObfuscatorLayout {

@@ -1,142 +1,235 @@
-# Logback sensitive data obfuscator pattern layout
-## Why
+# Logback Sensitive Data Obfuscator Pattern Layout
 
-Masking sensitive data in logs is crucial for protecting user privacy, complying with legal regulations such as
-RODO/GDPR, minimizing risk, and facilitating the debugging process. It is a security best practice that should be
-implemented in all systems handling sensitive data.
+A lightweight library for masking **Personally Identifiable Information (PII)** and other sensitive data in application logs. Built as a Logback layout extension that works with standard pattern-based log output.
 
-## Description
+## Why You Need This
 
-This library provides a solution for masking sensitive data in logs within applications that use
-Logback Classic. It allows you to extend the XML configuration by defining names od fields/variables/properties which
-contain in value sensitive data. The library includes predefined patterns for detecting sensitive values and also allows
-for creating custom patterns.
+Logging sensitive data such as names, email addresses, phone numbers, ID card numbers, or authentication tokens is a common source of data leaks. Even in internal systems, unmasked PII in logs can lead to:
 
-The library provides two methods for masking sensitive data:
+- **Regulatory violations** (GDPR/RODO, CCPA, HIPAA) with significant financial penalties
+- **Security incidents** when logs are accessed by unauthorized parties or forwarded to third-party log aggregators
+- **Privacy breaches** during debugging or incident response when logs are shared across teams
 
-- **SensitiveDataAsShortcutLayout** -This method involves computing a hash of the sensitive data using the format
-  FIRST LETTER OF SENSITIVE VALUE - LENGTH OF CHARACTER STRING - LAST LETTER OF SENSITIVE VALUE. It provides a
-  lightweight qualitative verification opportunity, such as checking whether the submitted value consists of the correct
-  number of characters or potentially correlating data across multiple logs. For example, for the value Gustaw, it will
-  be G-6-w. This method can be helpful during error verification in production or while debugging code to investigate
-  the root cause of bugs while anonymizing the data.
-- **SensitiveDataAsMaskLayout** - This method replaces sensitive data with a fixed string mask. The default mask
-  is '********'.
+This library provides a drop-in Logback layout that intercepts log messages and masks sensitive field values before they are written, ensuring PII never reaches your log storage.
 
-_example how it works_
+## Features
 
-```
-  {
-  "message": "some log with user email=[test@github.io]"
-  }
-```
+- Mask sensitive data in **JSON**, **key-value**, and **custom log formats**
+- Two masking strategies: **full mask** or **shortcut** (preserves data shape for debugging)
+- Built-in protection against **ReDoS attacks** with configurable regex timeout
+- **Zero dependencies** beyond Logback Classic
+- Fully configurable via standard Logback XML
 
-can be converted to:
+## Requirements
 
-```
-  {
-  "message": "some log with user email=[********]"
-  }
-```
+- Java 25 or higher
+- Logback Classic 1.5.x or higher
 
-For more information, please refer to the configuration section.
+## Installation
 
-## How to use
-
-1. Add the following dependency to your POM file:
+### Maven
 
 ```xml
-
 <dependency>
     <groupId>io.github.orczykowski</groupId>
     <artifactId>logback-sensitive-data-obfuscator-pattern-layout</artifactId>
-    <version>1.0.0</version>
+    <version>2.0.0</version>
 </dependency>
 ```
 
-2. Add layout to logback configuration
+### Gradle
 
-```xml
-
-<encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
-    ...
-</encoder>
+```groovy
+implementation 'io.github.orczykowski:logback-sensitive-data-obfuscator-pattern-layout:2.0.0'
 ```
 
-3. Choose type o masking by using `MaskSensitiveDataAsShortcutLayout` or `MaskSensitiveDataLayout`
+## Masking Strategies
+
+### MaskSensitiveDataLayout (Full Mask)
+
+Replaces the entire sensitive value with a fixed mask string (default: `********`).
+
+| Input                                          | Output                                          |
+|------------------------------------------------|-------------------------------------------------|
+| `email=[john.doe@example.com]`                 | `email=[********]`                               |
+| `{"ssn":"123-45-6789"}`                        | `{"ssn":"********"}`                             |
+| `firstName="Jane"`                             | `firstName="********"`                           |
+
+Best for: **production environments** where no trace of PII should remain in logs.
+
+### MaskSensitiveDataAsShortcutLayout (Shortcut Mask)
+
+Replaces the sensitive value with a compact fingerprint in the format: `FIRST_CHAR-LENGTH-LAST_CHAR`.
+
+| Input                                          | Output                                          |
+|------------------------------------------------|-------------------------------------------------|
+| `email=[john.doe@example.com]`                 | `email=[j-20-m]`                                 |
+| `firstName=[Jane]`                             | `firstName=[J-4-e]`                              |
+| `idCardNumber=[CC123456]`                      | `idCardNumber=[C-8-6]`                           |
+
+Best for: **staging/debugging** where you need to correlate data across logs or verify value shapes without exposing actual PII.
+
+## Quick Start
+
+Add the layout to your `logback.xml`:
 
 ```xml
-
-<layout class="io.github.orczykowski.logback.obfuscator.MaskSensitiveDataLayout">
-  ...
-</layout>
-
-```
-
-4. Define fields / properties with sensitive data
-
-```xml
-
-<layout class="io.github.orczykowski.logback.obfuscator.MaskSensitiveDataLayout">
-  <patternName>EQUAL_AND_SQUARE_BRACKETS</patternName>
-  <fieldName>firstName</fieldName>
-</layout>
-```
-
-_Example configuration:_
-
-```xml
-
 <configuration>
-  <appender name="mask" class="ch.qos.logback.core.ConsoleAppender">
-    <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
-      <layout class="io.github.orczykowski.logback.obfuscator.MaskSensitiveDataLayout">
-        <mask>***SENSITIVE*DATA***</mask>
-        <patternName>JSON</patternName>
-        <patternName>EQUAL_AND_SQUARE_BRACKETS</patternName>
-        <fieldName>firstName</fieldName>
-        <fieldName>email</fieldName>
-        <pattern>%-5p %c: %m</pattern>
-      </layout>
-    </encoder>
-  </appender>
-  <root level="INFO">
-    <appender-ref ref="mask"/>
-  </root>
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+            <layout class="io.github.orczykowski.logback.obfuscator.MaskSensitiveDataLayout">
+                <!-- Regex timeout protection (optional, default: 500ms) -->
+                <regexTimeoutMillis>500</regexTimeoutMillis>
 
+                <!-- Define detection patterns (must come before field names) -->
+                <patternName>JSON</patternName>
+                <patternName>EQUAL_AND_SQUARE_BRACKETS</patternName>
+
+                <!-- Define which fields contain PII -->
+                <fieldName>email</fieldName>
+                <fieldName>firstName</fieldName>
+                <fieldName>lastName</fieldName>
+                <fieldName>ssn</fieldName>
+                <fieldName>phoneNumber</fieldName>
+                <fieldName>creditCardNumber</fieldName>
+
+                <!-- Log pattern -->
+                <pattern>%d{yyyy-MM-dd HH:mm:ss} %-5level %logger{36} - %msg%n</pattern>
+            </layout>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
 </configuration>
 ```
 
-### Configuration options:
+### Example: Masking PII in JSON Logs
 
-| Option                | description                                                                                                                                                                                                                                                                                                                  |
-|-----------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| ```<patternName>```   | The name of the predefined regular expression. It must be present in the configuration before adding the <fieldName>. You can add multiple regular expressions.                                                                                                                                                              |
-| ```<customPattern>``` | A custom regular expression pattern. The pattern must comply with Java regular expression syntax and must contain a placeholder [PROPERTY_NAME] where the sensitive value appears in the log. The sensitive value must be enclosed in parentheses, e.g., `[PROPERTY_NAME]->'([^']+)'` for the log `email->'test@github.io'`. |
-| ```<fieldName>```     | The names of fields/properties/variables that contain sensitive data.                                                                                                                                                                                                                                                        |
-| ```<mask>```          | An optional string that represents the mask to which sensitive data will be replaced. This option is only applicable when using the SensitiveDataAsMaskDecorator.                                                                                                                                                            |
+Given the log statement:
 
-#### Available patterns names
+```java
+log.info("User registered: {}", new JSONObject(Map.of(
+    "email", "john.doe@example.com",
+    "firstName", "John",
+    "lastName", "Doe",
+    "role", "admin"
+)));
+```
 
-- **JSON** : Matches sensitive values in JSON logs,
-- **EQUAL_AND_SQUARE_BRACKETS** : Finds and replaces sensitive values if the log has the
-  format `fieldName=[some sensitive value]`,
-- **EQUAL_AND_BRACKETS** :   Finds and replaces sensitive values if the log has the
-  format `fieldName=(some sensitive value)`,
-- **EQUAL_AND_DOUBLE_QUOTES** : Finds sensitive values if the log has the format  `fieldName="some sensitive value"`,
+**Output with `MaskSensitiveDataLayout`:**
+```
+User registered: {"email":"********","firstName":"********","lastName":"********","role":"admin"}
+```
 
-Defining a regular expression (by selecting from predefined ones or adding a custom one) and a list of field names is
-mandatory. For the SensitiveDataAsMaskDecorator, you can define a custom mask, but it is optional.
+**Output with `MaskSensitiveDataAsShortcutLayout`:**
+```
+User registered: {"email":"j-20-m","firstName":"J-4-n","lastName":"D-3-e","role":"admin"}
+```
 
-## How to contribute
+### Example: Masking PII in Key-Value Logs
 
-### Hot to verify
+```java
+log.info("Processing payment: userId=[{}] creditCardNumber=[{}] amount=[{}]",
+    userId, creditCardNumber, amount);
+```
 
-- run tests `mvn test`
-- run mutation tests `mvn test-compile org.pitest:pitest-maven:mutationCoverage`
-- build `mvn install -DcreateChecksum=true`
+**Output:**
+```
+Processing payment: userId=[********] creditCardNumber=[********] amount=[100.00]
+```
+
+Note: `amount` is not masked because it was not declared as a sensitive field.
+
+### Example: Custom Mask String
+
+```xml
+<layout class="io.github.orczykowski.logback.obfuscator.MaskSensitiveDataLayout">
+    <mask>***REDACTED***</mask>
+    <patternName>JSON</patternName>
+    <fieldName>email</fieldName>
+    <pattern>%msg%n</pattern>
+</layout>
+```
+
+### Example: Custom Detection Pattern
+
+If your logs use a non-standard format, define a custom regex pattern:
+
+```xml
+<layout class="io.github.orczykowski.logback.obfuscator.MaskSensitiveDataLayout">
+    <customPattern>[PROPERTY_NAME]->'([^']+)'</customPattern>
+    <fieldName>email</fieldName>
+    <pattern>%msg%n</pattern>
+</layout>
+```
+
+This will mask values in logs like `email->'john@example.com'` into `email->'********'`.
+
+The `[PROPERTY_NAME]` placeholder is replaced with each declared field name. The sensitive value must be captured in a regex group (parentheses).
+
+## Configuration Reference
+
+| Option                    | Description                                                                                                                                                                                                                           | Required |
+|---------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| `<patternName>`           | Name of a built-in detection pattern. Must be declared **before** any `<fieldName>`. Multiple patterns can be added.                                                                                                                  | Yes*     |
+| `<customPattern>`         | A custom regex pattern. Must contain `[PROPERTY_NAME]` placeholder and a capture group for the sensitive value. Follows Java regex syntax.                                                                                            | Yes*     |
+| `<fieldName>`             | Name of a field/property/variable that contains PII or sensitive data.                                                                                                                                                                | Yes      |
+| `<mask>`                  | Custom mask string (default: `********`). Only applicable to `MaskSensitiveDataLayout`.                                                                                                                                               | No       |
+| `<regexTimeoutMillis>`    | Maximum time in milliseconds for regex evaluation per log message (default: `500`). Protects against catastrophic backtracking (ReDoS). Throws `RegexProcessingTimeoutException` if exceeded. Set to `-1` to disable timeout.           | No       |
+
+*At least one `<patternName>` or `<customPattern>` is required.
+
+### Built-in Detection Patterns
+
+| Pattern Name                   | Log Format                            | Example                           |
+|--------------------------------|---------------------------------------|-----------------------------------|
+| `JSON`                         | `"fieldName":"value"`                 | `"email":"john@example.com"`      |
+| `EQUAL_AND_SQUARE_BRACKETS`    | `fieldName=[value]`                   | `email=[john@example.com]`        |
+| `EQUAL_AND_BRACKETS`           | `fieldName=(value)`                   | `email=(john@example.com)`        |
+| `EQUAL_AND_DOUBLE_QUOTES`      | `fieldName="value"`                   | `email="john@example.com"`        |
+
+## ReDoS Protection
+
+Regular expressions used for pattern matching are protected against **Regular Expression Denial of Service (ReDoS)** attacks. Each regex evaluation is guarded by a configurable timeout (default: 500ms). If a regex takes longer than the allowed time (e.g., due to catastrophic backtracking on malicious input), a `RegexProcessingTimeoutException` is thrown, preventing the regex engine from hanging your application.
+
+```xml
+<!-- Increase timeout for complex log messages -->
+<regexTimeoutMillis>1000</regexTimeoutMillis>
+
+<!-- Or disable timeout entirely (not recommended for production) -->
+<regexTimeoutMillis>-1</regexTimeoutMillis>
+```
+
+## Common PII Fields to Protect
+
+Here is a non-exhaustive list of fields you should consider masking:
+
+| Category           | Field Names                                                        |
+|--------------------|--------------------------------------------------------------------|
+| **Identity**       | `firstName`, `lastName`, `fullName`, `dateOfBirth`, `ssn`, `pesel` |
+| **Contact**        | `email`, `phoneNumber`, `mobilePhone`, `address`                   |
+| **Financial**      | `creditCardNumber`, `iban`, `accountNumber`, `cvv`                 |
+| **Authentication** | `password`, `token`, `apiKey`, `sessionId`, `secret`               |
+| **Documents**      | `idCardNumber`, `passportNumber`, `driverLicense`                  |
+
+## How to Contribute
+
+### Verify
+
+- Run tests: `mvn test`
+- Run mutation tests: `mvn test-compile org.pitest:pitest-maven:mutationCoverage`
+- Build: `mvn install`
+
+## Support
+
+If you like this library and it helps you in your projects, I would really appreciate your support.
+
+Maintaining open source takes time, and your support helps keep this project alive and improving.
+
+<a href="https://buymeacoffee.com/tasior" target="_blank">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="217" height="60">
+</a>
 
 ### [MIT License](https://opensource.org/licenses/MIT)
-
-
-
