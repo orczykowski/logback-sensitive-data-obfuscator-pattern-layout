@@ -11,9 +11,12 @@ import java.util.stream.Collectors;
 import static java.util.Objects.isNull;
 
 public abstract class AbstractSensitiveDataObfuscatorLayout extends PatternLayout {
+    static final int DEFAULT_REGEX_TIMEOUT_MILLIS = 500;
+
     private static final SensitiveDataPatternFactory patternFactory = new SensitiveDataPatternFactory();
     protected Set<String> patterns = new HashSet<>();
     protected Set<Pattern> sensitiveFieldNamePatterns = new HashSet<>();
+    protected int regexTimeoutMillis = DEFAULT_REGEX_TIMEOUT_MILLIS;
 
     @Override
     public String doLayout(final ILoggingEvent event) {
@@ -49,6 +52,20 @@ public abstract class AbstractSensitiveDataObfuscatorLayout extends PatternLayou
                     expressions, it have to be  surrounded by parentheses""".formatted(SensitiveDataPatternFactory.PROPERTY_NAME_MARKER));
         }
         this.patterns.add(pattern);
+    }
+
+    public void setRegexTimeoutMillis(final int regexTimeoutMillis) {
+        if (regexTimeoutMillis < -1 || regexTimeoutMillis == 0) {
+            throw new IncorrectConfigurationException("regexTimeoutMillis must be a positive integer or -1 to disable timeout");
+        }
+        this.regexTimeoutMillis = regexTimeoutMillis;
+    }
+
+    protected CharSequence withTimeout(final CharSequence input, final Pattern pattern) {
+        if (regexTimeoutMillis == TimeoutRegexCharSequence.NO_TIMEOUT) {
+            return input;
+        }
+        return new TimeoutRegexCharSequence(input, regexTimeoutMillis, pattern);
     }
 
     protected abstract String maskLogMessage(final String str);

@@ -272,6 +272,40 @@ class MaskSensitiveDataLayoutTest {
         assertEquals("null", result);
     }
 
+    @Test
+    void shouldMaskSuccessfullyWithCustomTimeout() {
+        // given:
+        subject.setRegexTimeoutMillis(2000);
+        subject.addPatternName(SensitiveDataPatternFactory.SensitiveValuePatterns.EQUAL_AND_SQUARE_BRACKETS.name());
+        addSensitiveFields();
+
+        var log = "firstName=[Gustaw]";
+        var logEvent = ILoggingEventFactory.from(log);
+
+        // when:
+        var result = (String) subject.doLayout(logEvent);
+
+        // then:
+        assertEquals("firstName=[********]", result);
+    }
+
+    @Test
+    void shouldMaskSuccessfullyWithDisabledTimeout() {
+        // given:
+        subject.setRegexTimeoutMillis(-1);
+        subject.addPatternName(SensitiveDataPatternFactory.SensitiveValuePatterns.EQUAL_AND_SQUARE_BRACKETS.name());
+        addSensitiveFields();
+
+        var log = "firstName=[Gustaw]";
+        var logEvent = ILoggingEventFactory.from(log);
+
+        // when:
+        var result = (String) subject.doLayout(logEvent);
+
+        // then:
+        assertEquals("firstName=[********]", result);
+    }
+
     private void addSensitiveFields() {
         SENSITIVE_FIELDS.forEach(subject::addFieldName);
     }

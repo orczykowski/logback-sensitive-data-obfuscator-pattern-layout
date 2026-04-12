@@ -17,7 +17,7 @@ public class MaskSensitiveDataLayout extends AbstractSensitiveDataObfuscatorLayo
     protected String maskLogMessage(final String logMessage) {
         var maskedMessage = logMessage;
         for (final Pattern pattern : sensitiveFieldNamePatterns) {
-            var matcher = pattern.matcher(maskedMessage);
+            var matcher = pattern.matcher(withTimeout(maskedMessage, pattern));
             maskedMessage = matcher.replaceAll(this::maskSensitiveData);
         }
         return maskedMessage;

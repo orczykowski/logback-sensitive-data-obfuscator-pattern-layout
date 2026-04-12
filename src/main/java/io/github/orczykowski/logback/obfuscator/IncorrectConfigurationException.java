@@ -1,7 +1,7 @@
 package io.github.orczykowski.logback.obfuscator;
 
-public class IncorrectConfigurationException extends RuntimeException {
-    IncorrectConfigurationException(String msg) {
+public class IncorrectConfigurationException extends SensitiveDataObfuscatorException {
+    IncorrectConfigurationException(final String msg) {
         super(msg);
     }
 }
